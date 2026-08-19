@@ -27,11 +27,26 @@ logger = logging.getLogger(__name__)
 if not CHARTS_AVAILABLE:
     logger.warning("mplfinance/pandas not installed — chart images disabled, text signals unaffected. Add mplfinance,pandas,matplotlib to requirements.txt and redeploy to enable.")
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8909949122:AAEINK16qv8ALdW2G3R_2Sb93LDsJG0WC6Q")
-CHAT_ID        = os.getenv("CHAT_ID", "8005940008")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_TOKEN_HERE")
+CHAT_ID        = os.getenv("CHAT_ID", "YOUR_CHAT_ID_HERE")
 NEWS_API_KEY   = os.getenv("NEWS_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 AI_REVIEW_ENABLED = os.getenv("AI_REVIEW_ENABLED", "true").strip().lower() != "false"
+# DATA_DIR: where every persisted JSON file (trade journal, pattern
+# stats/weights, active trades, circuit breaker state, etc.) actually
+# lives. Defaults to "." — the container's own working directory —
+# which on Railway is EPHEMERAL and gets wiped on every redeploy unless
+# a persistent Volume is mounted. Set DATA_DIR=/data in Railway
+# Variables AND mount a Volume at /data (Railway dashboard -> service
+# -> Volumes -> New Volume, mount path /data) to make all of this
+# survive redeploys. Confirmed real before fixing: every one of the 10
+# state files this bot writes (adaptive pattern weights, trade history,
+# active positions, circuit breaker's daily loss counter) was a bare
+# filename with no path prefix — all in the same ephemeral blast radius.
+DATA_DIR = os.getenv("DATA_DIR", ".")
+os.makedirs(DATA_DIR, exist_ok=True)
+def data_path(filename):
+    return os.path.join(DATA_DIR, filename)
 
 BINANCE_PRICE_URL   = "https://data-api.binance.vision/api/v3/ticker/price"
 BINANCE_KLINE_URL   = "https://data-api.binance.vision/api/v3/klines"
@@ -275,14 +290,14 @@ def save_active_trades():
             s={k:{**v,"timestamp":v["timestamp"].isoformat(),
                   "expires_at":v["expires_at"].isoformat() if v.get("expires_at") else None}
                for k,v in active_trades.items()}
-            atomic_json_write("active_trades.json", s)
+            atomic_json_write(data_path("active_trades.json"), s)
         except Exception as e: logger.error(f"save_active_trades: {e}")
 
 def load_active_trades():
     global active_trades
     try:
-        if os.path.exists("active_trades.json"):
-            with open("active_trades.json") as f: data=json.load(f)
+        if os.path.exists(data_path("active_trades.json")):
+            with open(data_path("active_trades.json")) as f: data=json.load(f)
             active_trades={k:{**v,
                 "timestamp":datetime.fromisoformat(v["timestamp"]),
                 "expires_at":datetime.fromisoformat(v["expires_at"]) if v.get("expires_at") else None}
@@ -293,14 +308,14 @@ def load_active_trades():
 def save_trade_history():
     with trade_lock:
         try:
-            atomic_json_write("trades.json", pattern_stats)
+            atomic_json_write(data_path("trades.json"), pattern_stats)
         except Exception as e: logger.error(f"save_trade_history: {e}")
 
 def load_trade_history():
     global pattern_stats
     try:
-        if os.path.exists("trades.json"):
-            with open("trades.json") as f: loaded=json.load(f)
+        if os.path.exists(data_path("trades.json")):
+            with open(data_path("trades.json")) as f: loaded=json.load(f)
             for p in pattern_stats:
                 if p in loaded: pattern_stats[p]=loaded[p]
     except Exception as e: logger.error(f"load_trade_history: {e}")
@@ -311,32 +326,32 @@ def save_journal():
         if len(trade_journal) > JOURNAL_MAX_LIVE_ENTRIES:
             overflow_count = len(trade_journal) - JOURNAL_MAX_LIVE_ENTRIES
             overflow = trade_journal[:overflow_count]
-            with open("journal_archive.jsonl", "a") as f:
+            with open(data_path("journal_archive.jsonl"), "a") as f:
                 for entry in overflow:
                     f.write(json.dumps(entry) + "\n")
             trade_journal = trade_journal[overflow_count:]
             logger.info(f"Archived {overflow_count} journal entries to journal_archive.jsonl (kept most recent {JOURNAL_MAX_LIVE_ENTRIES} live)")
-        atomic_json_write("journal.json", trade_journal)
+        atomic_json_write(data_path("journal.json"), trade_journal)
     except Exception as e: logger.error(f"save_journal: {e}")
 
 def load_journal():
     global trade_journal
     try:
-        if os.path.exists("journal.json"):
-            with open("journal.json") as f: trade_journal=json.load(f)
+        if os.path.exists(data_path("journal.json")):
+            with open(data_path("journal.json")) as f: trade_journal=json.load(f)
         logger.info(f"Loaded {len(trade_journal)} journal entries.")
     except Exception as e: logger.error(f"load_journal: {e}")
 
 def save_learning():
     try:
-        atomic_json_write("learning.json", {"notes":learning_notes,"memory":market_memory,"clp":consecutive_loss_patterns})
+        atomic_json_write(data_path("learning.json"), {"notes":learning_notes,"memory":market_memory,"clp":consecutive_loss_patterns})
     except Exception as e: logger.error(f"save_learning: {e}")
 
 def load_learning():
     global learning_notes,market_memory,consecutive_loss_patterns
     try:
-        if os.path.exists("learning.json"):
-            with open("learning.json") as f: data=json.load(f)
+        if os.path.exists(data_path("learning.json")):
+            with open(data_path("learning.json")) as f: data=json.load(f)
             learning_notes=data.get("notes",[])
             market_memory.update(data.get("memory",{}))
             consecutive_loss_patterns=data.get("clp",{})
@@ -344,14 +359,14 @@ def load_learning():
 
 def save_alerts():
     try:
-        atomic_json_write("alerts.json", price_alerts)
+        atomic_json_write(data_path("alerts.json"), price_alerts)
     except Exception as e: logger.error(f"save_alerts: {e}")
 
 def load_alerts():
     global price_alerts
     try:
-        if os.path.exists("alerts.json"):
-            with open("alerts.json") as f: price_alerts=json.load(f)
+        if os.path.exists(data_path("alerts.json")):
+            with open(data_path("alerts.json")) as f: price_alerts=json.load(f)
     except Exception as e: logger.error(f"load_alerts: {e}")
 
 def save_pending_signals():
@@ -362,7 +377,7 @@ def save_pending_signals():
             if isinstance(d.get("timestamp"),datetime): d["timestamp"]=d["timestamp"].isoformat()
             if isinstance(d.get("expires_at"),datetime): d["expires_at"]=d["expires_at"].isoformat()
             s[coin]=d
-        atomic_json_write("pending_signals.json", s)
+        atomic_json_write(data_path("pending_signals.json"), s)
     except Exception as e: logger.error(f"save_pending: {e}")
 
 def save_evaluating_signals():
@@ -373,14 +388,14 @@ def save_evaluating_signals():
             if isinstance(d.get("logged_at"), datetime):
                 d["logged_at"] = d["logged_at"].isoformat()
             s[coin] = d
-        atomic_json_write("evaluating_signals.json", s)
+        atomic_json_write(data_path("evaluating_signals.json"), s)
     except Exception as e: logger.error(f"save_evaluating_signals: {e}")
 
 def load_evaluating_signals():
     global evaluating_signals
     try:
-        if not os.path.exists("evaluating_signals.json"): return
-        with open("evaluating_signals.json") as f: data = json.load(f)
+        if not os.path.exists(data_path("evaluating_signals.json")): return
+        with open(data_path("evaluating_signals.json")) as f: data = json.load(f)
         for coin, d in data.items():
             if d.get("logged_at"):
                 try: d["logged_at"] = datetime.fromisoformat(d["logged_at"])
@@ -396,14 +411,14 @@ def save_retest_watchlist():
             d=dict(w)
             if isinstance(d.get("logged_at"),datetime): d["logged_at"]=d["logged_at"].isoformat()
             s[coin]=d
-        atomic_json_write("retest_watchlist.json", s)
+        atomic_json_write(data_path("retest_watchlist.json"), s)
     except Exception as e: logger.error(f"save_retest_watchlist: {e}")
 
 def load_retest_watchlist():
     global retest_watchlist
     try:
-        if not os.path.exists("retest_watchlist.json"): return
-        with open("retest_watchlist.json") as f: data=json.load(f)
+        if not os.path.exists(data_path("retest_watchlist.json")): return
+        with open(data_path("retest_watchlist.json")) as f: data=json.load(f)
         for coin,w in data.items():
             if w.get("logged_at"):
                 try: w["logged_at"]=datetime.fromisoformat(w["logged_at"])
@@ -415,14 +430,14 @@ def load_retest_watchlist():
 def save_macro_events():
     """Point 2: Persists SCHEDULED_MACRO_EVENTS to disk so events added via"""
     try:
-        atomic_json_write("macro_events.json", SCHEDULED_MACRO_EVENTS)
+        atomic_json_write(data_path("macro_events.json"), SCHEDULED_MACRO_EVENTS)
     except Exception as e: logger.error(f"save_macro_events: {e}")
 
 def load_macro_events():
     global SCHEDULED_MACRO_EVENTS
     try:
-        if not os.path.exists("macro_events.json"): return
-        with open("macro_events.json") as f: data=json.load(f)
+        if not os.path.exists(data_path("macro_events.json")): return
+        with open(data_path("macro_events.json")) as f: data=json.load(f)
         if isinstance(data,list):
             SCHEDULED_MACRO_EVENTS = data
             logger.info(f"Loaded {len(SCHEDULED_MACRO_EVENTS)} macro events.")
@@ -431,8 +446,8 @@ def load_macro_events():
 def load_pending_signals():
     global pending_signals
     try:
-        if not os.path.exists("pending_signals.json"): return
-        with open("pending_signals.json") as f: data=json.load(f)
+        if not os.path.exists(data_path("pending_signals.json")): return
+        with open(data_path("pending_signals.json")) as f: data=json.load(f)
         now=get_ist_datetime()
         for coin,sig in data.items():
             if sig.get("expires_at"):
@@ -450,7 +465,7 @@ def load_pending_signals():
 
 def save_circuit_breaker():
     try:
-        atomic_json_write("cb.json", {"daily_losses":daily_losses,
+        atomic_json_write(data_path("cb.json"), {"daily_losses":daily_losses,
                        "circuit_breaker_until":circuit_breaker_until,
                        "date":str(last_reset_day)})
     except Exception as e: logger.error(f"save_cb: {e}")
@@ -458,8 +473,8 @@ def save_circuit_breaker():
 def load_circuit_breaker():
     global daily_losses,circuit_breaker_until,last_reset_day
     try:
-        if os.path.exists("cb.json"):
-            with open("cb.json") as f: data=json.load(f)
+        if os.path.exists(data_path("cb.json")):
+            with open(data_path("cb.json")) as f: data=json.load(f)
             if data.get("date")==str(datetime.now(IST).date()):
                 daily_losses=data.get("daily_losses",0)
                 circuit_breaker_until=data.get("circuit_breaker_until")
@@ -5867,7 +5882,10 @@ def check_active_trades():
                              (trade["direction"]=="SELL" and closes[-2]>ema50_prev*1.015))
                     if rev:
                         hit="REVERSAL"
-                        active_trades[coin]["reversal_alerted"]=True; save_active_trades()
+                        active_trades[coin]["reversal_alerted"]=True
+                        active_trades[coin]["_reversal_interval_used"]=_reversal_native_interval or "15m"
+                        active_trades[coin]["_reversal_ema_used"]=_ema_period
+                        save_active_trades()
         if trade.get("timestamp"):
             hours_open=(get_ist_datetime()-trade["timestamp"]).total_seconds()/3600
             _eta_hours = trade.get("eta_minutes", 60) / 60
@@ -5944,13 +5962,15 @@ def check_active_trades():
                 if hit=="LOSS" and pnl>=0:
                     title_word="SCRATCHED (BREAKEVEN)"
                     em="🛡️"
+                _rev_interval_label = trade.get("_reversal_interval_used", "15m")
+                _rev_ema_label = trade.get("_reversal_ema_used", 50)
                 _close_msg = (
                     f"{em} <b>TRADE {title_word} — {coin}</b>\n"
                     f"⚙️ <b>TRADING SIGNAL MASTER v32G</b>\n"
                     f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                     + (f"⏰ Momentum thesis didn't play out — sat flat {duration} without\n"
                        f"   reaching the first milestone. Closed to free up capital.\n\n" if hit=="TIMEOUT" else "")
-                    + (f"🔄 Dynamic Thesis Cut — price broke the 15m EMA50 against\n"
+                    + (f"🔄 Dynamic Thesis Cut — price broke the {_rev_interval_label} EMA{_rev_ema_label} against\n"
                        f"   the trade's direction. The original entry thesis is\n"
                        f"   invalidated, closed here instead of riding it to the\n"
                        f"   structural stop.\n\n" if hit=="REVERSAL" else "")
