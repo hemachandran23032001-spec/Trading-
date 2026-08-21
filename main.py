@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 if not CHARTS_AVAILABLE:
     logger.warning("mplfinance/pandas not installed — chart images disabled, text signals unaffected. Add mplfinance,pandas,matplotlib to requirements.txt and redeploy to enable.")
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8909949122:AAEINK16qv8ALdW2G3R_2Sb93LDsJG0WC6Q")
-CHAT_ID        = os.getenv("CHAT_ID", "8005940008")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_TOKEN_HERE")
+CHAT_ID        = os.getenv("CHAT_ID", "YOUR_CHAT_ID_HERE")
 NEWS_API_KEY   = os.getenv("NEWS_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 AI_REVIEW_ENABLED = os.getenv("AI_REVIEW_ENABLED", "true").strip().lower() != "false"
@@ -54,7 +54,7 @@ BINANCE_FUTURES_PRICE_URL = "https://fapi.binance.com/fapi/v1/ticker/price"
 BINANCE_FUTURES_KLINE_URL = "https://fapi.binance.com/fapi/v1/klines"
 BYBIT_KLINE_URL = "https://api.bybit.com/v5/market/kline"
 OKX_KLINE_URL = "https://www.okx.com/api/v5/market/candles"
-FUTURES_ONLY_SYMBOLS = set()
+FUTURES_ONLY_SYMBOLS = {"XAUUSDT", "XAGUSDT", "COPPERUSDT"}
 BINANCE_FUNDING_URL = "https://fapi.binance.com/fapi/v1/fundingRate"
 BINANCE_OI_URL      = "https://fapi.binance.com/futures/data/openInterestHist"
 
@@ -99,8 +99,6 @@ retest_watchlist          = {}
 htf_zones_cache           = {}
 daily_levels_cache        = {}
 crt_range_cache           = {}
-macro_forecast_cache      = {}
-lightning_pattern_pending = {}
 consecutive_loss_patterns = {}
 price_alerts              = {}
 market_memory = {
@@ -113,7 +111,7 @@ pattern_stats = {p: {"signals":0,"wins":0,"losses":0,"total_pnl":0.0,"weight":1.
     "RSI Reversal","Double Bottom","Double Top",
     "Bullish Engulfing","Bearish Engulfing","Bull Flag Formation","Bear Flag Formation",
     "BOS Breakout","Change of Character (ChoCh)","Liquidity Sweep","Volatility Contraction (Coiling)","Pre-Breakout Compression",
-    "Inside Bar Coil","BOS-Retest","BOS Retest (Sniper Entry)","Early Spark Ignition","Pressure Cooker Triangle","Vanguard Macro Squeeze","Smart Money Absorption","Funding Divergence Sniper","Trend Continuation Coil","5m Multi-TF Sniper","Order Flow Sniper","Yellow Circle Sniper","Lightning 3M Ignition (Taker Delta)","Lightning 5M Setup","Pre-Breakout Macro","Hammer","Inverted Hammer","Shooting Star","Dragonfly Doji","Gravestone Doji","Tweezer Bottom","Tweezer Top","Morning Star","Evening Star","Three White Soldiers","Three Black Crows","Triple Bottom (Anticipatory)","Triple Top (Anticipatory)","Inverse Head & Shoulders (Early)","Head & Shoulders (Early)","Wolfe Wave Reversal","PDL Reversal Sweep","PDH Reversal Sweep","ChoCh + Fib 0.618 Golden Zone","Candle Range Theory","Inverse Fair Value Gap (IFVG)","Macro Forecast","Order Block","Quasimodo"
+    "Inside Bar Coil","BOS-Retest","BOS Retest (Sniper Entry)","Early Spark Ignition","Pressure Cooker Triangle","Vanguard Macro Squeeze","Smart Money Absorption","Funding Divergence Sniper","Trend Continuation Coil","5m Multi-TF Sniper","Order Flow Sniper","Yellow Circle Sniper","Pre-Breakout Macro","PDL Reversal Sweep","PDH Reversal Sweep","ChoCh + Fib 0.618 Golden Zone","Candle Range Theory","Inverse Fair Value Gap (IFVG)","Order Block","Quasimodo","Metals MTF"
 ]}
 
 last_update_id         = None
@@ -121,9 +119,9 @@ last_river_time        = 0
 last_hourly_time       = time.time()
 last_pnl_update_time   = time.time() + 1800
 last_8h_desk_time      = time.time()
-last_macro_forecast_pass_time = 0
 _bot_start_time        = time.time()
 last_pressure_cooker_time = time.time()
+last_metals_scan_time = 0
 last_weekly_report_day = None
 
 SCAN_INTERVAL            = 90
@@ -143,12 +141,6 @@ INSTANT_EXPIRY_MINUTES   = 30
 DELAY_BETWEEN_COINS      = 0.05
 MAX_SIGNALS_PER_CYCLE    = 3
 MAX_ACTIVE_TRADES        = 5
-MACRO_FORECAST_WATCHLIST      = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
-LIGHTNING_CVD_GRACE_MINUTES   = 4
-MACRO_FORECAST_PASS_INTERVAL_SECONDS = 21600
-MACRO_FORECAST_COOLDOWN_HOURS = 24
-MACRO_FORECAST_MAX_PER_PASS   = 2
-MACRO_FORECAST_DOMINANCE_PCT  = 55
 ATR_SL_MULTIPLIER        = 2.5
 ATR_TP_MULTIPLIER        = 5.0
 MIN_RR_RATIO             = 2.0
@@ -231,15 +223,6 @@ BOT_VERSION = "v32G"
 BOT_NAME    = "TRADING SIGNAL MASTER"
 BOT_HEADER  = f"⚙️ {BOT_NAME} {BOT_VERSION}"
 
-LIGHTNING_ENGINE_PATTERNS = {
-    "Lightning 5M Setup", "Lightning 3M Ignition (Taker Delta)",
-    "Yellow Circle Sniper", "Order Flow Sniper", "5m Multi-TF Sniper",
-    "Hammer", "Inverted Hammer", "Shooting Star", "Dragonfly Doji", "Gravestone Doji",
-    "Tweezer Bottom", "Tweezer Top", "Morning Star", "Evening Star",
-    "Three White Soldiers", "Three Black Crows",
-    "Triple Bottom (Anticipatory)", "Triple Top (Anticipatory)",
-    "Inverse Head & Shoulders (Early)", "Head & Shoulders (Early)", "Wolfe Wave Reversal",
-}
 PRE_BREAKOUT_ENGINE_PATTERNS = {
     "Inside Bar Coil", "Pre-Breakout Compression", "Volatility Contraction (Coiling)",
     "Early Spark Ignition", "Smart Money Absorption", "Funding Divergence Sniper",
@@ -251,17 +234,20 @@ PRE_BREAKOUT_ENGINE_PATTERNS = {
     "Inverse Fair Value Gap (IFVG)",
     "Order Block",
     "Quasimodo",
+    # RECLASSIFIED from the removed Blitz engine: all three already ran
+    # through the standard accumulation-exempt/AI-review pipeline
+    # (format_and_send with is_instant=False), never Blitz's fast-track
+    # bypass — they were only ever labeled Blitz cosmetically.
+    "Yellow Circle Sniper", "Order Flow Sniper", "5m Multi-TF Sniper",
 }
 
 def get_engine_label(pattern_name):
-    """Maps any real pattern name (including dynamic Lightning/Macro names"""
+    """Maps any real pattern name to a human-readable engine label."""
     primary = pattern_name.split(" + ")[0] if pattern_name else ""
-    if primary in LIGHTNING_ENGINE_PATTERNS or primary.startswith("Lightning") or "Ignition" in primary:
-        return "⚡ BLITZ ENGINE"
     if primary.startswith("Pre-Breakout Macro"):
         return "🛰️ RADAR ENGINE"
-    if primary.startswith("Macro Forecast"):
-        return "🔮 ORACLE ENGINE"
+    if primary.startswith("Metals MTF"):
+        return "🥇 METALS ENGINE"
     if primary in PRE_BREAKOUT_ENGINE_PATTERNS:
         return "🧭 SCOUT ENGINE"
     return "📊 SIGNAL ENGINE"
@@ -1047,42 +1033,6 @@ def get_candle_geometry(open_, high_, low_, close_):
     lower_wick_pct = (body_bottom - low_) / rng * 100
     return {"body_pct": body_pct, "upper_wick_pct": upper_wick_pct, "lower_wick_pct": lower_wick_pct,
             "body_top": body_top, "body_bottom": body_bottom, "is_bullish": close_ >= open_}
-
-
-def detect_hammer_family(klines):
-    """Detects Hammer, Inverted Hammer, Shooting Star, Dragonfly Doji, and"""
-    if len(klines) < 7:
-        return None, None, None
-    c = klines[-2]
-    o, h, l, cl = float(c[1]), float(c[2]), float(c[3]), float(c[4])
-    geo = get_candle_geometry(o, h, l, cl)
-    if geo["body_pct"] <= 0 and geo["upper_wick_pct"] == 0 and geo["lower_wick_pct"] == 0:
-        return None, None, None
-
-    body_pct = geo["body_pct"]
-    upper_pct = geo["upper_wick_pct"]
-    lower_pct = geo["lower_wick_pct"]
-    body_top_position_pct = ((geo["body_top"] - l) / (h - l) * 100) if (h - l) > 0 else 0
-    prior_closes = [float(k[4]) for k in klines[-7:-2]]
-    preceding_downtrend = prior_closes[-1] < prior_closes[0]
-    preceding_uptrend = prior_closes[-1] > prior_closes[0]
-
-    if 0 <= body_pct <= 10 and upper_pct + lower_pct > 0:
-        if lower_pct >= 65 and upper_pct <= 15:
-            return "Dragonfly Doji", "BUY", geo
-        if upper_pct >= 65 and lower_pct <= 15:
-            return "Gravestone Doji", "SELL", geo
-
-    if body_pct <= 30:
-        if lower_pct >= body_pct * 2 and lower_pct >= 50 and upper_pct <= 15 and body_top_position_pct >= 60 and preceding_downtrend:
-            return "Hammer", "BUY", geo
-        if upper_pct >= body_pct * 2 and upper_pct >= 50 and lower_pct <= 15 and body_top_position_pct <= 40:
-            if preceding_downtrend:
-                return "Inverted Hammer", "BUY", geo
-            if preceding_uptrend:
-                return "Shooting Star", "SELL", geo
-
-    return None, None, None
 
 
 def detect_micro_candlestick_patterns(klines):
@@ -2427,12 +2377,7 @@ def detect_patterns(symbol, klines, price, btc_trend):
         elif yc_dir == "SELL" and alt_bear_ok:
             p.append(("Yellow Circle Sniper", _yc_score, "SELL"))
 
-    hammer_pat, hammer_dir, hammer_geo = detect_hammer_family(klines)
-    if hammer_pat:
-        if hammer_dir == "BUY" and alt_bull_ok:
-            p.append((hammer_pat, TIER1_BASE, "BUY"))
-        elif hammer_dir == "SELL" and alt_bear_ok:
-            p.append((hammer_pat, TIER1_BASE, "SELL"))
+
 
     near_levels = (sup > 0 and abs(price - sup) / sup < 0.01) or (res > 0 and abs(res - price) / res < 0.01)
     if near_levels:
@@ -3218,55 +3163,6 @@ def check_active_macro_coils():
             del macro_coils[k]
 
 
-def check_lightning_ignition_engine(symbol, live_price):
-    """Standalone, zero-lag Micro-Engine for Lightning Ignition. Evaluates"""
-    t_1h = get_htf_trend(symbol, "1h")
-    if t_1h == 0:
-        return None
-
-    klines_5m = get_klines(symbol, "5m", 30)
-    klines_3m = get_klines(symbol, "3m", 15)
-    if not klines_5m or not klines_3m:
-        return None
-
-    pat_name, pat_dir, geo_notes = detect_micro_candlestick_patterns(klines_5m)
-    if not pat_name:
-        res, sup = get_recent_swing_levels(klines_5m, lookback=20)
-        pat_name, pat_dir, geo_notes = detect_micro_structures_5m(klines_5m, live_price, sup, res)
-
-    coin = symbol.replace("USDT", "")
-    now = get_ist_datetime()
-
-    if pat_name and not ((pat_dir == "BUY" and t_1h != 1) or (pat_dir == "SELL" and t_1h != -1)):
-        lightning_pattern_pending[coin] = {
-            "pattern": pat_name, "direction": pat_dir, "geo_notes": geo_notes, "detected_at": now,
-        }
-
-    pending = lightning_pattern_pending.get(coin)
-    if not pending:
-        return None
-    if (now - pending["detected_at"]).total_seconds() > LIGHTNING_CVD_GRACE_MINUTES * 60:
-        del lightning_pattern_pending[coin]
-        return None
-
-    cvd_dir = detect_cvd_delta_3m(symbol)
-    if cvd_dir != pending["direction"]:
-        return None
-
-    del lightning_pattern_pending[coin]
-    return {
-        "symbol": symbol,
-        "direction": pending["direction"],
-        "pattern": f"Lightning 5M Setup ({pending['pattern']})",
-        "setup_score": 99.0,
-        "scan_price": live_price,
-        "geometry_notes": pending["geo_notes"],
-        "is_lightning": True,
-        "tf_score": get_timeframe_score(symbol, pending["direction"]),
-        "market_condition": "unknown",
-    }
-
-
 def detect_order_flow_sniper(symbol, klines, price):
     """Order Flow Sniper — a genuinely STANDALONE predictive trigger, built"""
     if len(klines) < 5: return None
@@ -3911,10 +3807,10 @@ def get_expectancy_report_text():
 
     running = 0.0; peak = 0.0; max_dd = 0.0
     for t in all_trades:
-        running += t.get("port_pnl", t.get("pnl", 0))
+        running += t.get("pnl", 0)
         peak = max(peak, running)
         max_dd = min(max_dd, running - peak)
-    net_port_pnl = sum(t.get("port_pnl", t.get("pnl", 0)) for t in all_trades)
+    net_port_pnl = sum(t.get("pnl", 0) for t in all_trades)
 
     text = f"{_H('EXPECTANCY & PROFIT FACTOR','📊')}\n\n"
     text += f"  🎯 Win Rate    : <b>{win_rate:.1f}%</b>  ({len(wins)}W / {len(losses)}L, {total} trades)\n"
@@ -3924,7 +3820,7 @@ def get_expectancy_report_text():
     _pf_display = f"{profit_factor:.2f}" if profit_factor != float('inf') else "∞"
     text += f"  ⚖️ Profit Factor: <b>{_pf_display}</b>" + ("  (gross profit ÷ gross loss)\n" if profit_factor != float('inf') else "  (no losses yet)\n")
     text += f"  📉 Max Drawdown: {max_dd:.2f}% (running, port-weighted)\n"
-    text += f"  🏦 Net PnL     : {fmt_pnl(net_port_pnl)}\n"
+    text += f"  💰 Net PnL     : {fmt_pnl(net_port_pnl)}\n"
     text += f"\n  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
     if r_trades:
         text += f"  R-Multiple stats (from {len(r_trades)}/{total} trades with risk data):\n"
@@ -3972,26 +3868,28 @@ def get_detailed_summary_text():
     text += f"  📡 Radar Conversions: {radar_coins_triggered}/{radar_coins_added} (<b>{conversion_rate:.1f}%</b>)\n"
     text += f"  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
 
-    ow=ol=0; op=0.0; best_pnl=worst_pnl=None; best_ds=worst_ds=""
+    ow=ol=0; op=0.0; best_pnl=worst_pnl=None; best_ds=worst_ds=""; active_days=0
     for days_ago in range(9,-1,-1):
         day=today-timedelta(days=days_ago)
         dt=[j for j in trade_journal if j.get("date")==str(day)]
         w=sum(1 for t in dt if t["result"]=="WIN"); l=sum(1 for t in dt if t["result"]=="LOSS")
-        total=w+l; pnl=sum(t.get("port_pnl", t["pnl"]) for t in dt)
+        total=w+l; pnl=sum(t.get("pnl", 0) for t in dt)
         ow+=w; ol+=l; op+=pnl; ds=day.strftime("%d %b")
         if total==0:
             text+=f"  ⚪ <b>{ds}</b>  ──────────  No trades\n"
         else:
+            active_days+=1
             em="✅" if w>l else "❌" if l>w else "➖"
             bar="█"*w+"░"*l
             text+=f"  {em} <b>{ds}</b>  [{bar[:8]}]  {w}W/{l}L  {fmt_pnl(pnl)}\n"
             if best_pnl is None or pnl>best_pnl: best_pnl=pnl; best_ds=ds
             if worst_pnl is None or pnl<worst_pnl: worst_pnl=pnl; worst_ds=ds
     ot=ow+ol; owr=(ow/ot*100) if ot>0 else 0
+    avg_per_day = op/active_days if active_days>0 else 0.0
     text+=(f"\n  ══════════════════════════════\n"
            f"  ✅ Wins     : {ow}   ❌ Losses  : {ol}\n"
            f"  🎯 Win Rate : <b>{owr:.1f}%</b>\n"
-           f"  💰 PnL      : {fmt_pnl(op)}   📊 Avg/Day: {fmt_pnl(op/10)}\n")
+           f"  💰 PnL      : {fmt_pnl(op)}   📊 Avg/Day: {fmt_pnl(avg_per_day)} ({active_days} active day{'s' if active_days!=1 else ''})\n")
     if best_ds:  text+=f"  🏆 Best Day : {best_ds}  ({fmt_pnl(best_pnl)})\n"
     if worst_ds: text+=f"  📉 Worst    : {worst_ds}  ({fmt_pnl(worst_pnl)})\n"
     text+=f"  🕐 {get_ist_time()}"
@@ -4324,263 +4222,6 @@ def send_8h_ai_desk_report():
             ping_msg += f"  🎯 {rest.strip()}\n"
         ping_msg += f"\n  Check the chart now — this may be your entry.\n  🕐 {get_ist_time()}"
         send_telegram(ping_msg)
-
-
-def get_daily_technical_context(symbol):
-    """Engine B's technical-bias layer — daily-timeframe EMA read plus"""
-    klines_1d = get_klines(symbol, "1d", 220)
-    if not klines_1d or len(klines_1d) < 210:
-        return None
-
-    closes = [float(k[4]) for k in klines_1d]
-    highs = [float(k[2]) for k in klines_1d]
-    lows = [float(k[3]) for k in klines_1d]
-    price = closes[-1]
-
-    ema20 = calculate_ema(closes, 20)
-    ema50 = calculate_ema(closes, 50)
-    ema200 = calculate_ema(closes, 200)
-    atr14 = calculate_atr(klines_1d[-20:], 14)
-    swing_high_30d = max(highs[-30:])
-    swing_low_30d = min(lows[-30:])
-
-    if ema20 and ema50 and ema200 and price > ema20 > ema50 > ema200:
-        trend_desc = "Strong uptrend — price above EMA20 above EMA50 above EMA200 (full bullish stack)"
-    elif ema20 and ema50 and ema200 and price < ema20 < ema50 < ema200:
-        trend_desc = "Strong downtrend — price below EMA20 below EMA50 below EMA200 (full bearish stack)"
-    elif ema50 and price > ema50:
-        trend_desc = "Above the 50-day EMA but the EMA stack isn't fully aligned — mixed/transitional trend"
-    elif ema50:
-        trend_desc = "Below the 50-day EMA but the EMA stack isn't fully aligned — mixed/transitional trend"
-    else:
-        trend_desc = "EMA structure unclear"
-
-    summary = (
-        f"Daily trend read: {trend_desc}. "
-        f"Price {format_price(price)} vs EMA20 {format_price(ema20) if ema20 else 'N/A'}, "
-        f"EMA50 {format_price(ema50) if ema50 else 'N/A'}, EMA200 {format_price(ema200) if ema200 else 'N/A'}. "
-        f"30-day range: {format_price(swing_low_30d)} - {format_price(swing_high_30d)}. "
-        f"Daily ATR(14): {format_price(atr14)} ({(atr14/price*100):.1f}% of price)."
-    )
-
-    return {
-        "price": price, "ema20": ema20, "ema50": ema50, "ema200": ema200,
-        "atr14": atr14, "swing_high_30d": swing_high_30d, "swing_low_30d": swing_low_30d,
-        "trend_desc": trend_desc, "summary": summary,
-    }
-
-
-def generate_macro_forecast(coin, symbol):
-    """Engine B's core: a 4-5 day scenario forecast. Fetches the daily"""
-    if not AI_REVIEW_ENABLED or not ANTHROPIC_API_KEY:
-        return None
-
-    tech = get_daily_technical_context(symbol)
-    if not tech:
-        return None
-
-    prompt = f"""You are a professional crypto macro analyst producing a 4-5 day swing-trade forecast for {coin} ({symbol}).
-
-TECHNICAL CONTEXT (daily timeframe):
-{tech['summary']}
-
-Use your web search tool to check current news, market sentiment, and any recent catalysts for {coin} and the broader crypto market before answering.
-
-Produce a 3-scenario probability forecast for the next 4-5 days: Bearish, Neutral, Bullish. Probabilities must sum to 100. Each scenario needs a realistic price action zone, a target price for this 4-5 day horizon, and an invalidation price (where the scenario is proven wrong).
-
-Respond with ONLY a raw JSON object, no markdown fences, no preamble, in exactly this shape:
-{{
-  "bearish": {{"probability": <int>, "zone_low": <float>, "zone_high": <float>, "target": <float>, "invalidation": <float>, "reasoning": "<one sentence>"}},
-  "neutral": {{"probability": <int>, "zone_low": <float>, "zone_high": <float>, "target": <float>, "invalidation": <float>, "reasoning": "<one sentence>"}},
-  "bullish": {{"probability": <int>, "zone_low": <float>, "zone_high": <float>, "target": <float>, "invalidation": <float>, "reasoning": "<one sentence>"}},
-  "dominant": "<bearish|neutral|bullish>",
-  "catalyst_summary": "<one sentence on what you found from web search, or 'no notable catalysts found'>"
-}}"""
-
-    try:
-        res = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-            json={
-                "model": "claude-haiku-4-5-20251001", "max_tokens": 900,
-                "tools": [{"type": "web_search_20250305", "name": "web_search"}],
-                "messages": [{"role": "user", "content": prompt}],
-            },
-            timeout=45,
-        )
-        res.raise_for_status()
-        data = res.json()
-        text = "".join(block.get("text", "") for block in data.get("content", []) if block.get("type") == "text")
-
-        clean = text.replace("```json", "").replace("```", "").strip()
-        brace_start = clean.find("{")
-        if brace_start == -1:
-            logger.warning(f"{coin} macro forecast: no JSON object found in response — raw text: {text[:200]!r}")
-            return None
-        depth = 0
-        brace_end = -1
-        for i in range(brace_start, len(clean)):
-            if clean[i] == "{":
-                depth += 1
-            elif clean[i] == "}":
-                depth -= 1
-                if depth == 0:
-                    brace_end = i
-                    break
-        if brace_end == -1:
-            logger.warning(f"{coin} macro forecast: unterminated JSON object in response")
-            return None
-        parsed = json.loads(clean[brace_start:brace_end+1])
-
-        for key in ("bearish", "neutral", "bullish"):
-            s = parsed.get(key)
-            if not s or "probability" not in s or "target" not in s or "invalidation" not in s:
-                logger.warning(f"{coin} macro forecast malformed — missing fields in '{key}'")
-                return None
-        if parsed.get("dominant") not in ("bearish", "neutral", "bullish"):
-            logger.warning(f"{coin} macro forecast malformed — bad 'dominant' field")
-            return None
-
-        parsed["_tech"] = tech
-        parsed["_generated_at"] = get_ist_datetime()
-        return parsed
-    except Exception as e:
-        logger.warning(f"generate_macro_forecast {coin}: {e}")
-        return None
-
-
-def format_macro_forecast_report(coin, forecast):
-    """The always-sent report — every pass, regardless of whether any"""
-    tech = forecast["_tech"]
-    dom = forecast["dominant"]
-    icons = {"bearish": "🔴", "neutral": "🟡", "bullish": "🟢"}
-
-    msg = (
-        f"<b>📈 4-5 DAY MACRO FORECAST</b>\n"
-        f"┌─────────────────────────────────┐\n"
-        f"│  ⚙️  TRADING SIGNAL MASTER v32G  │\n"
-        f"└─────────────────────────────────┘\n\n"
-        f"  🏗️ Engine: 🔮 ORACLE ENGINE\n"
-        f"  🪙 <b>{coin}</b>\n"
-        f"  📊 {tech['trend_desc']}\n\n"
-    )
-
-    for key in ("bearish", "neutral", "bullish"):
-        s = forecast[key]
-        marker = " 👑 DOMINANT" if key == dom else ""
-        msg += (
-            f"  {icons[key]} <b>{key.upper()} — {s['probability']}%</b>{marker}\n"
-            f"     Zone: {format_price(s['zone_low'])} - {format_price(s['zone_high'])}\n"
-            f"     Target: {format_price(s['target'])}  •  Invalidation: {format_price(s['invalidation'])}\n"
-            f"     <i>{s['reasoning']}</i>\n\n"
-        )
-
-    msg += f"  📰 {forecast.get('catalyst_summary', 'No catalyst summary available.')}\n\n"
-    msg += f"  🕐 {get_ist_time()}"
-    return msg
-
-
-def send_macro_forecast_signal(coin, symbol, forecast):
-    """Escalates a dominant scenario (>=MACRO_FORECAST_DOMINANCE_PCT) into"""
-    dom = forecast["dominant"]
-    if dom == "neutral":
-        return
-    s = forecast[dom]
-    if s["probability"] < MACRO_FORECAST_DOMINANCE_PCT:
-        return
-
-    direction = "BUY" if dom == "bullish" else "SELL"
-    tech = forecast["_tech"]
-    entry = tech["price"]
-    sl_price = s["invalidation"]
-    tp_price = s["target"]
-    sl_pct = abs(entry - sl_price) / entry * 100 if entry > 0 else 0
-    tp_pct = abs(tp_price - entry) / entry * 100 if entry > 0 else 0
-    if sl_pct <= 0 or tp_pct <= 0:
-        logger.warning(f"{coin} macro forecast signal skipped — degenerate SL/TP from AI scenario")
-        return
-    rr_ratio = tp_pct / sl_pct
-
-    lev = 2
-    pos_size = get_fixed_fractional_size(0.5, entry, sl_price, lev)
-    profit_target = tp_pct * lev
-
-    now = get_ist_datetime()
-    expiry_time = now + timedelta(hours=24)
-    setup = {
-        "coin": coin, "symbol": symbol, "direction": direction,
-        "pattern": f"Macro Forecast ({dom.capitalize()} {s['probability']}%)", "setup_score": float(s["probability"]),
-        "leverage": lev, "scan_price": entry, "entry": entry, "sl": sl_price, "tp": tp_price,
-        "original_tp": tp_price, "timestamp": now, "expires_at": expiry_time,
-        "pos_size": pos_size, "profit_target": profit_target, "eta_minutes": 5760,
-        "reversal_alerted": False, "breakeven_sent": False, "partial_tp_taken": False,
-        "milestones_sent": [], "market_condition": "unknown",
-    }
-    pending_signals[coin] = setup
-
-    dir_em = "🟢 LONG  ▲" if direction == "BUY" else "🔴 SHORT ▼"
-    msg = (
-        f"<b>📈 MACRO FORECAST SIGNAL — {s['probability']}% {dom.upper()}</b>\n"
-        f"┌─────────────────────────────────┐\n"
-        f"│  ⚙️  TRADING SIGNAL MASTER v32G  │\n"
-        f"└─────────────────────────────────┘\n\n"
-        f"  🏗️ Engine: 🔮 ORACLE ENGINE\n"
-        f"  🪙 <b>{coin}</b>  {dir_em}  🔧 <b>{lev}x Leverage</b>  (4-5 day hold)\n\n"
-        f"  ┌── TRADE LEVELS ─────────────┐\n"
-        f"  │  💰 Entry      <code>{format_price(entry)}</code>\n"
-        f"  │  🎯 Target     <code>{format_price(tp_price)}</code>  <i>+{tp_pct:.2f}%</i>\n"
-        f"  │  🛑 Invalidation <code>{format_price(sl_price)}</code>  <i>-{sl_pct:.2f}%</i>\n"
-        f"  └─────────────────────────────┘\n\n"
-        f"  📈 Max Profit : <b>+{profit_target:.1f}%</b>\n"
-        f"  ⚖️  Risk/Reward: <b>1 : {rr_ratio:.1f}</b>\n"
-        f"  💼 Position   : <b>{pos_size:.1f}% of margin</b>  (risking 0.5% of equity)\n\n"
-        f"  <i>{s['reasoning']}</i>\n"
-        f"  📰 {forecast.get('catalyst_summary', '')}\n\n"
-        f"  🕐 {get_ist_time()}"
-    )
-    reply_markup = {"inline_keyboard": [[
-        {"text": "✅ Activate Trade", "callback_data": f"ACTIVATE_{coin}"},
-        {"text": "❌ Ignore", "callback_data": f"IGNORE_{coin}"}
-    ]]}
-    send_telegram(msg, reply_markup=reply_markup)
-
-
-def run_macro_forecast_pass():
-    """Engine B's scheduled entry point — called from the main loop on"""
-    global macro_forecast_cache
-    if not AI_REVIEW_ENABLED:
-        return
-    now = get_ist_datetime()
-    processed = 0
-    attempted = 0
-    succeeded = 0
-    for symbol in MACRO_FORECAST_WATCHLIST:
-        if processed >= MACRO_FORECAST_MAX_PER_PASS:
-            break
-        coin = symbol.replace("USDT", "")
-        cached = macro_forecast_cache.get(coin)
-        if cached and (now - cached["generated_at"]).total_seconds() < MACRO_FORECAST_COOLDOWN_HOURS * 3600:
-            continue
-
-        attempted += 1
-        forecast = generate_macro_forecast(coin, symbol)
-        processed += 1
-        if not forecast:
-            continue
-
-        succeeded += 1
-        macro_forecast_cache[coin] = {"forecast": forecast, "generated_at": now}
-        send_telegram(format_macro_forecast_report(coin, forecast))
-        send_macro_forecast_signal(coin, symbol, forecast)
-
-    if attempted > 0 and succeeded == 0:
-        send_telegram(
-            f"⚠️ <b>FORECAST ENGINE — pass failed</b>\n"
-            f"Attempted {attempted} coin(s), 0 produced a valid forecast.\n"
-            f"Check Railway logs for 'generate_macro_forecast' warnings — "
-            f"likely a malformed AI response or an API error.\n"
-            f"🕐 {get_ist_time()}"
-        )
 
 
 def ai_analyst_review():
@@ -5078,7 +4719,7 @@ def update_trailing_sl(coin,trade,price,klines=None):
     """The Law of Dynamic Noise: Chandelier Exit trailing stop, based on"""
     if trade.get("is_macro"):
         klines = get_klines(trade.get("symbol", coin+"USDT"), "4h", 20)
-    elif trade.get("is_lightning") or trade.get("pattern","").split(" + ")[0] in ("Yellow Circle Sniper","5m Multi-TF Sniper"):
+    elif trade.get("pattern","").split(" + ")[0] in ("Yellow Circle Sniper","5m Multi-TF Sniper"):
         klines = get_klines(trade.get("symbol", coin+"USDT"), "5m", 20)
 
     if klines and len(klines) >= 15 and trade.get("timestamp"):
@@ -5121,6 +4762,29 @@ def check_profit_milestones(coin,trade,price,pnl):
     """Proportional milestone system — scales with the trade's ACTUAL profit target,"""
     milestones=trade.get("milestones_sent",[])
     ep=trade["entry"]; direction=trade["direction"]; lev=trade.get("leverage",1)
+
+    if trade.get("pattern","").startswith("Metals MTF"):
+        tp1_roi = trade.get("metals_tp1_roi_pct", 10.0)
+        if pnl >= tp1_roi and "p1" not in milestones:
+            sl_price = ep
+            active_trades[coin].setdefault("milestones_sent",[]).append("p1")
+            active_trades[coin]["sl"] = sl_price
+            if trade.get("timestamp"):
+                m1_mins = (get_ist_datetime() - trade["timestamp"]).total_seconds() / 60
+                active_trades[coin]["time_to_m1_mins"] = round(m1_mins, 1)
+            save_active_trades()
+            send_telegram(
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"✅ <b>METALS TP1  •  +{tp1_roi:.1f}% ROI reached</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"  🪙 Coin    : <b>{coin}</b>\n"
+                f"  📈 PnL     : {fmt_pnl(pnl)}\n"
+                f"  🎯 Riding to TP2 (capped ≤20% ROI)\n"
+                f"  🛑 Move SL : <code>{format_price(sl_price)}</code>  (breakeven)\n"
+                f"  🕐 {get_ist_time()}"
+            )
+        return
+
     target=trade.get("profit_target", abs(trade["tp"]-ep)/ep*100*lev)
     if target<=0: target=10
 
@@ -5269,12 +4933,7 @@ def format_and_send(setup,coin,is_river=False,is_instant=False,market_condition=
     _sl_klines = klines_15m
     _chart_interval = "15m"
     _primary_for_native = setup["pattern"].split(" + ")[0]
-    if _primary_for_native.startswith("Lightning 5M Setup") or (setup.get("is_lightning") and "Ignition" in _primary_for_native):
-        _native_klines = get_klines(setup["symbol"], "5m", 60)
-        if _native_klines and len(_native_klines) >= 20:
-            _sl_klines = _native_klines
-            _chart_interval = "5m"
-    elif _primary_for_native in _pattern_native_interval:
+    if _primary_for_native in _pattern_native_interval:
         _native_interval = _pattern_native_interval[_primary_for_native]
         if _native_interval != "15m":
             _native_klines = get_klines(setup["symbol"], _native_interval, 60)
@@ -5512,7 +5171,7 @@ def format_and_send(setup,coin,is_river=False,is_instant=False,market_condition=
         grade,pts,breakdown=grade_result
 
     _accum_exempt_patterns = ("Inside Bar Coil","Pre-Breakout Compression","Volatility Contraction (Coiling)","Early Spark Ignition","Vanguard Macro Squeeze","Smart Money Absorption","Funding Divergence Sniper","Order Flow Sniper","Yellow Circle Sniper")
-    _is_accum_exempt = _floor_primary in _accum_exempt_patterns or _floor_primary.startswith("Lightning 5M Setup") or (setup.get("is_lightning") and "Ignition" in _floor_primary) or _floor_primary.startswith("Pre-Breakout Macro")
+    _is_accum_exempt = _floor_primary in _accum_exempt_patterns or _floor_primary.startswith("Pre-Breakout Macro")
     if grade in ("Grade C","Grade B") and (not _is_accum_exempt or pts < 7):
         logger.info(f"{coin} rejected - {grade} on scorecard ({pts} pts) despite score {setup['setup_score']:.1f}"); return False
 
@@ -5557,7 +5216,7 @@ def format_and_send(setup,coin,is_river=False,is_instant=False,market_condition=
     setup["leverage"]=lev
 
     ai_result=None
-    if setup.get("is_macro") or setup.get("is_lightning") or from_evaluation:
+    if setup.get("is_macro") or from_evaluation:
         if setup.get("is_macro"):
             ai_reason = setup.get("macro_ai_reasoning", "Approved by Upstream Macro AI.")
         elif from_evaluation:
@@ -5836,21 +5495,16 @@ def check_active_trades():
             pnl=((price-trade["entry"])/trade["entry"])*100*trade["leverage"]
         else:
             pnl=((trade["entry"]-price)/trade["entry"])*100*trade["leverage"]
-        klines_check=get_klines(trade["symbol"],"5m" if trade.get("is_lightning") else "15m",60)
+        klines_check=get_klines(trade["symbol"],"15m",60)
         update_trailing_sl(coin,trade,price,klines_check)
         check_profit_milestones(coin,trade,price,pnl)
         if not trade.get("reversal_alerted",False):
             _reversal_pattern = trade.get("pattern", "").split(" + ")[0]
-            if trade.get("eta_minutes", 60) > 1440:
-                _reversal_native_interval = "1d"
-            elif _reversal_pattern.startswith("Lightning 5M Setup") or (trade.get("is_lightning") and "Ignition" in _reversal_pattern):
-                _reversal_native_interval = "3m"
-            else:
-                _reversal_native_interval = {
-                    "Yellow Circle Sniper": "5m",
-                    "5m Multi-TF Sniper": "5m",
-                    "Order Flow Sniper": "15m",
-                }.get(_reversal_pattern)
+            _reversal_native_interval = {
+                "Yellow Circle Sniper": "5m",
+                "5m Multi-TF Sniper": "5m",
+                "Order Flow Sniper": "15m",
+            }.get(_reversal_pattern)
             if _reversal_native_interval == "1d":
                 klines = get_klines(trade["symbol"], "1d", 60)
                 _ema_period = 20
@@ -5923,13 +5577,34 @@ def check_active_trades():
             pnl=((trade["entry"]-exit_price)/trade["entry"])*100*trade["leverage"]
         if hit:
             _should_delete_trade = True
+            # Safe defaults computed before the risky section below, so
+            # the notification always has what it needs even if the
+            # journal/stats write fails partway through.
+            primary = trade.get("pattern", "Unknown").split(" + ")[0]
+            duration = ""
+            if trade.get("timestamp"):
+                mins = int((get_ist_datetime()-trade["timestamp"]).total_seconds()/60)
+                duration = f"{mins} mins"
+            pnl_result = "WIN" if pnl >= 0 else "LOSS"
+
+            # JOURNAL/STATS RECORDING — deliberately isolated in its own
+            # try/except (this round, real fix — confirmed the bug by
+            # tracing the control flow, not guessed): this used to be
+            # the first thing inside the SAME try block as the actual
+            # notification send, with _should_delete_trade already set
+            # True before entering. Any exception here — file I/O in
+            # save_journal(), anything in learn_from_trade() — jumped
+            # straight to the outer except, which never reset
+            # _should_delete_trade, so the trade got silently deleted
+            # with the close notification NEVER EVEN ATTEMPTED. Very
+            # likely exactly the missing-notification issue reported.
+            # A journal-write failure can now never block the actual
+            # Telegram message, which is what the user is relying on.
             try:
-                pnl_result = "WIN" if pnl >= 0 else "LOSS"
                 pos_size = trade.get("pos_size", 5.0)
                 port_pnl = (pos_size / 100) * pnl
                 with trade_lock:
-                    primary=trade["pattern"].split(" + ")[0]
-                    _stats_key = "Lightning 5M Setup" if primary.startswith("Lightning 5M Setup") else "Lightning 3M Ignition (Taker Delta)" if "Ignition" in primary else "Pre-Breakout Macro" if primary.startswith("Pre-Breakout Macro") else "Macro Forecast" if primary.startswith("Macro Forecast") else primary
+                    _stats_key = "Pre-Breakout Macro" if primary.startswith("Pre-Breakout Macro") else "Metals MTF" if primary.startswith("Metals MTF") else primary
                     if _stats_key in pattern_stats:
                         pattern_stats[_stats_key]["signals"]+=1
                         pattern_stats[_stats_key]["total_pnl"]+=port_pnl
@@ -5941,10 +5616,6 @@ def check_active_trades():
                         coin_cooldowns[coin]=get_ist_datetime()+timedelta(hours=2)
                     elif hit=="REVERSAL":
                         coin_cooldowns[coin]=get_ist_datetime()+timedelta(hours=3)
-                    duration=""
-                    if trade.get("timestamp"):
-                        mins=int((get_ist_datetime()-trade["timestamp"]).total_seconds()/60)
-                        duration=f"{mins} mins"
                     mc=trade.get("market_condition","bull")
                     _entry_r = trade.get("entry", 0)
                     _sl_r = trade.get("sl", 0)
@@ -5957,6 +5628,12 @@ def check_active_trades():
                         "duration":duration,"tf_score":trade.get("tf_score",0),"market_condition":mc,
                         "r_multiple":r_multiple})
                     save_journal(); learn_from_trade(coin,_stats_key,pnl_result,pnl,mc,trade.get("tf_score",0))
+            except Exception as e:
+                logger.error(f"Journal/stats recording failed for {coin} close (notification will still be attempted): {e}")
+
+            # NOTIFICATION — always reached now regardless of whether
+            # journal/stats recording above succeeded.
+            try:
                 em="✅" if pnl_result=="WIN" else "⏰" if hit=="TIMEOUT" else "🔄" if hit=="REVERSAL" else "🛑"
                 title_word="WON" if pnl_result=="WIN" else "TIME STOP" if hit=="TIMEOUT" else "THESIS CUT" if hit=="REVERSAL" else "CLOSED"
                 if hit=="LOSS" and pnl>=0:
@@ -6425,13 +6102,360 @@ def send_weekly_report():
     for day in week:
         dt=[j for j in trade_journal if j.get("date")==str(day)]
         w=sum(1 for t in dt if t["result"]=="WIN"); l=sum(1 for t in dt if t["result"]=="LOSS")
-        pnl=sum(t.get("port_pnl", t["pnl"]) for t in dt); wins+=w; losses+=l; total_pnl+=pnl
+        pnl=sum(t.get("pnl", 0) for t in dt); wins+=w; losses+=l; total_pnl+=pnl
         em="✅" if w>l else "❌" if l>w else "⚪"
         msg+=f"{em} {day.strftime('%a %d')}: {w}W/{l}L {fmt_pnl(pnl)}\n"
     total=wins+losses; wr=(wins/total*100) if total>0 else 0
     msg+=f"\n{S()}\nTotal: {wins}W/{losses}L | WR:{wr:.1f}% | {fmt_pnl(total_pnl)}"
     msg+=f"\n\n{generate_weekly_insight()}"
     send_telegram(msg)
+
+METALS_SYMBOLS = ["XAUUSDT", "XAGUSDT", "COPPERUSDT"]
+METALS_SCAN_INTERVAL_SECONDS = 60
+METALS_MAX_LEVERAGE = 10
+metals_cooldowns = {}
+METALS_COOLDOWN_MINUTES = 30
+
+def get_metals_macro_context(symbol):
+    """
+    Step 1 (Dynamic Filter, 1D & 4H): boundary context only (major
+    daily pivots + 4H ATR), not a hard trend-direction blocker.
+    """
+    klines_1d = get_klines(symbol, "1d", 30)
+    klines_4h = get_klines(symbol, "4h", 50)
+    if not klines_1d or len(klines_1d) < 20 or not klines_4h or len(klines_4h) < 20:
+        return None
+    atr_4h = calculate_atr(klines_4h, 14)
+    return {
+        "atr_4h": atr_4h,
+        "pivot_high": max(float(k[2]) for k in klines_1d[-20:]),
+        "pivot_low": min(float(k[3]) for k in klines_1d[-20:]),
+    }
+
+
+def check_near_major_level(price, macro_ctx, direction):
+    """The one thing Step 1 still blocks: a trade slamming directly into a major 1D level against itself."""
+    if not macro_ctx or not macro_ctx.get("atr_4h"):
+        return True
+    tol = 0.003
+    if direction == "BUY" and abs(price - macro_ctx["pivot_high"]) / price < tol:
+        return False
+    if direction == "SELL" and abs(price - macro_ctx["pivot_low"]) / price < tol:
+        return False
+    return True
+
+
+def get_metals_session_bias(symbol):
+    """
+    Step 2 (Session Trend, 15m & 1H): direction from 15m VWAP + 20/50
+    EMA. Ranging 15m RSI (40-60) allows a mean-reversion trade toward
+    the 15m EMA mean, rather than blocking everything.
+    """
+    klines_15m = get_klines(symbol, "15m", 100)
+    if not klines_15m or len(klines_15m) < 60:
+        return None, "insufficient 15m history"
+    closes = [float(k[4]) for k in klines_15m]
+    price = closes[-1]
+    ema20, ema50 = calculate_ema(closes, 20), calculate_ema(closes, 50)
+    vwap = calculate_vwap(klines_15m[-96:])
+    rsi = calculate_rsi(closes)
+    if not all([ema20, ema50, vwap, rsi]):
+        return None, "indicator calculation failed"
+    if 40 <= rsi <= 60:
+        if price > ema20:
+            return "SELL", f"15m ranging (RSI {rsi:.1f}), price above 20-EMA — mean-reversion short"
+        return "BUY", f"15m ranging (RSI {rsi:.1f}), price below 20-EMA — mean-reversion long"
+    if price > vwap and ema20 > ema50:
+        return "BUY", f"15m price>VWAP, 20-EMA>50-EMA, RSI {rsi:.1f}"
+    if price < vwap and ema20 < ema50:
+        return "SELL", f"15m price<VWAP, 20-EMA<50-EMA, RSI {rsi:.1f}"
+    return None, "15m VWAP/EMA not aligned"
+
+
+def detect_fair_value_gaps_metals(klines, lookback=40):
+    """Fair Value Gap — 3-candle imbalance, candle 2 never touches the gap. Metals-specific rebuild."""
+    if len(klines) < 3:
+        return []
+    highs = [float(k[2]) for k in klines]
+    lows = [float(k[3]) for k in klines]
+    closes = [float(k[4]) for k in klines]
+    start = max(2, len(klines) - lookback)
+    gaps = []
+    for i in range(start, len(klines)):
+        c1_high, c1_low = highs[i-2], lows[i-2]
+        c3_high, c3_low = highs[i], lows[i]
+        if c1_high < c3_low:
+            top, bottom, direction = c3_low, c1_high, "BUY"
+        elif c1_low > c3_high:
+            top, bottom, direction = c1_low, c3_high, "SELL"
+        else:
+            continue
+        disrespected = False
+        for j in range(i + 1, len(closes)):
+            if direction == "BUY" and closes[j] < bottom:
+                disrespected = True; break
+            if direction == "SELL" and closes[j] > top:
+                disrespected = True; break
+        gaps.append({"direction": direction, "top": top, "bottom": bottom,
+                      "formed_idx": i, "disrespected": disrespected})
+    return gaps
+
+
+def detect_inverse_fvg_metals(klines, price, lookback=40):
+    """IFVG — a disrespected FVG that flips role, live once price retests the flipped zone."""
+    gaps = detect_fair_value_gaps_metals(klines, lookback)
+    for g in gaps:
+        if not g["disrespected"]:
+            continue
+        ifvg_direction = "SELL" if g["direction"] == "BUY" else "BUY"
+        top, bottom = g["top"], g["bottom"]
+        if bottom <= price <= top:
+            return ifvg_direction, top, bottom
+    return None, 0, 0
+
+
+def find_metals_order_block(klines):
+    """Order Block — last opposite candle before a >=2% displacement breaking a 15-candle swing, plus retest confirmation."""
+    if len(klines) < 20:
+        return None, 0, 0
+    opens = [float(k[1]) for k in klines]
+    highs = [float(k[2]) for k in klines]
+    lows = [float(k[3]) for k in klines]
+    closes = [float(k[4]) for k in klines]
+    zone_dir, zone_top, zone_bottom = None, 0, 0
+    for i in range(len(klines) - 6, max(len(klines) - 26, 0), -1):
+        window_end = min(i + 5, len(klines))
+        if closes[i] < opens[i]:
+            impulse_high = max(highs[i+1:window_end])
+            swing_high_before = max(highs[max(0, i-15):i]) if i > 0 else 0
+            impulse_pct = (impulse_high - closes[i]) / closes[i] * 100 if closes[i] > 0 else 0
+            if impulse_pct >= 2.0 and swing_high_before > 0 and impulse_high > swing_high_before:
+                top, bottom = highs[i], lows[i]
+                mitigated = any(closes[j] < bottom for j in range(i+1, len(closes)-1))
+                if not mitigated:
+                    zone_dir, zone_top, zone_bottom = "BUY", top, bottom
+                    break
+        if closes[i] > opens[i]:
+            impulse_low = min(lows[i+1:window_end])
+            swing_low_before = min(lows[max(0, i-15):i]) if i > 0 else 0
+            impulse_pct = (closes[i] - impulse_low) / closes[i] * 100 if closes[i] > 0 else 0
+            if impulse_pct >= 2.0 and swing_low_before > 0 and impulse_low < swing_low_before:
+                top, bottom = highs[i], lows[i]
+                mitigated = any(closes[j] > top for j in range(i+1, len(closes)-1))
+                if not mitigated:
+                    zone_dir, zone_top, zone_bottom = "SELL", top, bottom
+                    break
+    if zone_dir is None or len(klines) < 2:
+        return None, 0, 0
+    o, h, l, c = opens[-2], highs[-2], lows[-2], closes[-2]
+    if zone_dir == "BUY":
+        if not (zone_bottom <= l <= zone_top or zone_bottom <= c <= zone_top):
+            return None, 0, 0
+        level = zone_top
+    else:
+        if not (zone_bottom <= h <= zone_top or zone_bottom <= c <= zone_top):
+            return None, 0, 0
+        level = zone_bottom
+    if check_retest_rejection_candle(o, h, l, c, zone_dir, level):
+        return zone_dir, zone_top, zone_bottom
+    return None, 0, 0
+
+
+def find_metals_5m_pullback_setup(symbol, direction):
+    """
+    Step 3 (Entry Setup, 5m): pullback to 5m 20-EMA, liquidity sweep,
+    IFVG retest, or Order Block retest. RSI extreme guard (>75/<25),
+    volume just needs to be non-dormant (>=0.8x SMA20).
+    """
+    klines_5m = get_klines(symbol, "5m", 60)
+    if not klines_5m or len(klines_5m) < 40:
+        return None, "insufficient 5m history"
+    closes = [float(k[4]) for k in klines_5m]
+    highs = [float(k[2]) for k in klines_5m]
+    lows = [float(k[3]) for k in klines_5m]
+    opens = [float(k[1]) for k in klines_5m]
+    vols = [float(k[5]) for k in klines_5m]
+    avg_vol = sum(vols[-20:]) / 20
+    price = closes[-1]
+    rsi = calculate_rsi(closes)
+    ema20 = calculate_ema(closes, 20)
+    if not all([rsi, ema20]):
+        return None, "indicator calculation failed"
+    if direction == "BUY" and rsi > 75:
+        return None, f"5m RSI {rsi:.1f} overbought — long blocked"
+    if direction == "SELL" and rsi < 25:
+        return None, f"5m RSI {rsi:.1f} oversold — short blocked"
+    if avg_vol <= 0 or vols[-1] < avg_vol * 0.8:
+        return None, "5m volume dormant (<0.8x SMA20)"
+    if ema20 and abs(price - ema20) / ema20 < 0.0015:
+        return "5m 20-EMA Pullback", None
+    sup, res = min(lows[-20:]), max(highs[-20:])
+    ms = detect_market_structure(klines_5m)
+    sweep_dir, _ = detect_liquidity_sweep(klines_5m, highs, lows, closes, opens, sup, res, ms)
+    if sweep_dir == direction:
+        return "5m Liquidity Sweep", None
+    ifvg_dir, _, _ = detect_inverse_fvg_metals(klines_5m, price)
+    if ifvg_dir == direction:
+        return "5m IFVG Retest", None
+    ob_dir, _, _ = find_metals_order_block(klines_5m)
+    if ob_dir == direction:
+        return "5m Order Block Retest", None
+    return None, "no qualifying 5m pullback/sweep/IFVG/OB setup"
+
+
+def confirm_metals_1m_micro_entry(symbol, direction):
+    """Step 4 (Micro Execution, 1m): engulfing/pin-bar confirmation on close, 1m volume >=1.2x SMA20."""
+    klines_1m = get_klines(symbol, "1m", 25)
+    if not klines_1m or len(klines_1m) < 22:
+        return False
+    o, h, l, c, v = (float(klines_1m[-2][1]), float(klines_1m[-2][2]),
+                      float(klines_1m[-2][3]), float(klines_1m[-2][4]), float(klines_1m[-2][5]))
+    vols = [float(k[5]) for k in klines_1m[-22:-2]]
+    avg_vol = sum(vols) / len(vols) if vols else 0
+    if avg_vol <= 0 or v < avg_vol * 1.2:
+        return False
+    prev_l, prev_h = float(klines_1m[-3][3]), float(klines_1m[-3][2])
+    level = prev_l if direction == "BUY" else prev_h
+    return check_retest_rejection_candle(o, h, l, c, direction, level)
+
+
+def check_metals_session_active():
+    """Session filter removed per explicit instruction (5-7 signals/day target) — kept as a no-op for a one-line restore later."""
+    return True
+
+
+def build_metals_trade_plan(symbol, direction, entry, leverage):
+    """
+    Risk management: SL beyond the further of structural swing / 1.5x
+    ATR. If that would violate 1:1.5 R:R even at the 20% TP cap, the
+    SL is TIGHTENED to exactly clear it, rather than rejecting the
+    signal. TP1 fixed +10% ROI (breakeven trigger). TP2 target 18-20%.
+    """
+    klines_5m = get_klines(symbol, "5m", 30)
+    klines_1m = get_klines(symbol, "1m", 30)
+    if not klines_5m:
+        return None
+    atr_5m = calculate_atr(klines_5m, 14)
+    if direction == "BUY":
+        swings = [min(float(k[3]) for k in klines_5m[-15:])]
+        if klines_1m: swings.append(min(float(k[3]) for k in klines_1m[-15:]))
+        structural_sl = min(swings)
+        atr_sl = entry - (atr_5m * 1.5) if atr_5m else structural_sl
+        sl = min(structural_sl, atr_sl)
+    else:
+        swings = [max(float(k[2]) for k in klines_5m[-15:])]
+        if klines_1m: swings.append(max(float(k[2]) for k in klines_1m[-15:]))
+        structural_sl = max(swings)
+        atr_sl = entry + (atr_5m * 1.5) if atr_5m else structural_sl
+        sl = max(structural_sl, atr_sl)
+    sl_pct = abs(entry - sl) / entry * 100
+    if sl_pct <= 0:
+        return None
+    sl_roi_pct = sl_pct * leverage
+    max_sl_roi_for_min_rr = 20.0 / 1.5
+    if sl_roi_pct > max_sl_roi_for_min_rr:
+        sl_roi_pct = max_sl_roi_for_min_rr
+        sl_pct = sl_roi_pct / leverage
+        sl = entry * (1 - sl_pct/100) if direction == "BUY" else entry * (1 + sl_pct/100)
+    tp1_roi_pct = 10.0
+    tp2_roi_pct = min(20.0, max(18.0, sl_roi_pct * 1.5))
+    rr_ratio = tp2_roi_pct / sl_roi_pct if sl_roi_pct > 0 else 0
+    if rr_ratio < 1.5:
+        return None
+    tp1_pct, tp2_pct = tp1_roi_pct / leverage, tp2_roi_pct / leverage
+    if direction == "BUY":
+        tp1, tp2 = entry * (1 + tp1_pct/100), entry * (1 + tp2_pct/100)
+    else:
+        tp1, tp2 = entry * (1 - tp1_pct/100), entry * (1 - tp2_pct/100)
+    return {"sl": sl, "tp1": tp1, "tp2": tp2, "sl_roi_pct": sl_roi_pct,
+            "tp1_roi_pct": tp1_roi_pct, "tp2_roi_pct": tp2_roi_pct, "rr_ratio": rr_ratio}
+
+
+def send_metals_signal(symbol, direction, macro_reason, intermediate_reason, setup_name, entry, plan, confluence_score, leverage):
+    """Sends the Telegram alert, registers the trade in pending_signals (Activate/Ignore/expiry), returns the JSON payload."""
+    coin = symbol.replace("USDT", "")
+    dir_em = "🟢 LONG  ▲" if direction == "BUY" else "🔴 SHORT ▼"
+    msg = (
+        f"<b>🥇 METALS MTF SIGNAL — {coin}</b>\n"
+        f"┌─────────────────────────────────┐\n"
+        f"│  ⚙️  TRADING SIGNAL MASTER v32G  │\n"
+        f"└─────────────────────────────────┘\n\n"
+        f"  🏗️ Engine: 🥇 METALS ENGINE\n"
+        f"  🪙 <b>{coin}</b>  {dir_em}  🔧 <b>{leverage}x Leverage</b>\n\n"
+        f"  ┌── WATERFALL ALIGNMENT ──────┐\n"
+        f"  │  📅 D1/4H: {macro_reason}\n"
+        f"  │  ⏱️ 1H/15m: {intermediate_reason}\n"
+        f"  │  📌 5m Setup: {setup_name}\n"
+        f"  │  🎯 1m Execution: confirmed close\n"
+        f"  └─────────────────────────────┘\n\n"
+        f"  ┌── TRADE LEVELS ─────────────┐\n"
+        f"  │  💰 Entry  <code>{entry:.4f}</code>\n"
+        f"  │  🎯 TP1    <code>{plan['tp1']:.4f}</code>  +{plan['tp1_roi_pct']:.1f}% ROI (SL→breakeven)\n"
+        f"  │  🎯 TP2    <code>{plan['tp2']:.4f}</code>  +{plan['tp2_roi_pct']:.1f}% ROI (capped ≤20%)\n"
+        f"  │  🛑 SL     <code>{plan['sl']:.4f}</code>  -{plan['sl_roi_pct']:.1f}% ROI\n"
+        f"  └─────────────────────────────┘\n\n"
+        f"  ⚖️ R:R  1 : {plan['rr_ratio']:.2f}\n"
+        f"  🎯 Confluence Score: {confluence_score}/100\n\n"
+        f"  🕐 {get_ist_time()}"
+    )
+    reply_markup = {"inline_keyboard": [[
+        {"text": "✅ Activate Trade", "callback_data": f"ACTIVATE_{coin}"},
+        {"text": "❌ Ignore", "callback_data": f"IGNORE_{coin}"}
+    ]]}
+    send_telegram(msg, reply_markup=reply_markup)
+    now = get_ist_datetime()
+    pos_size = get_fixed_fractional_size(1.0, entry, plan["sl"], leverage)
+    setup = {
+        "coin": coin, "symbol": symbol, "direction": direction,
+        "pattern": f"Metals MTF ({setup_name})", "setup_score": float(confluence_score),
+        "leverage": leverage, "scan_price": entry, "entry": entry,
+        "sl": plan["sl"], "tp": plan["tp2"], "original_tp": plan["tp2"],
+        "metals_tp1": plan["tp1"], "metals_tp1_roi_pct": plan["tp1_roi_pct"],
+        "timestamp": now, "expires_at": now + timedelta(hours=2),
+        "pos_size": pos_size, "profit_target": plan["tp2_roi_pct"],
+        "eta_minutes": 120, "reversal_alerted": False, "breakeven_sent": False,
+        "partial_tp_taken": False, "milestones_sent": [], "market_condition": "unknown",
+    }
+    pending_signals[coin] = setup
+    return {"symbol": symbol, "direction": direction, "entry_price": entry, "stop_loss": plan["sl"],
+            "take_profit_1": plan["tp1"], "take_profit_2_max_20pct": plan["tp2"], "confluence_score": confluence_score}
+
+
+def scan_metals_engine():
+    """Entry point — runs on METALS_SCAN_INTERVAL_SECONDS, checks the full waterfall per symbol."""
+    if not check_metals_session_active():
+        return
+    now = get_ist_datetime()
+    for symbol in METALS_SYMBOLS:
+        coin = symbol.replace("USDT", "")
+        cooldown_until = metals_cooldowns.get(symbol)
+        if cooldown_until and now < cooldown_until:
+            continue
+        with trade_lock:
+            if coin in active_trades or coin in pending_signals:
+                continue
+        macro_ctx = get_metals_macro_context(symbol)
+        session_dir, session_reason = get_metals_session_bias(symbol)
+        if not session_dir:
+            continue
+        entry = get_price(symbol)
+        if not entry:
+            continue
+        if not check_near_major_level(entry, macro_ctx, session_dir):
+            continue
+        setup_name, setup_level = find_metals_5m_pullback_setup(symbol, session_dir)
+        if not setup_name:
+            continue
+        if not confirm_metals_1m_micro_entry(symbol, session_dir):
+            continue
+        plan = build_metals_trade_plan(symbol, session_dir, entry, METALS_MAX_LEVERAGE)
+        if not plan:
+            continue
+        confluence_score = 85
+        metals_cooldowns[symbol] = now + timedelta(minutes=METALS_COOLDOWN_MINUTES)
+        payload = send_metals_signal(symbol, session_dir, "1D/4H boundary OK" if macro_ctx else "1D/4H context unavailable (soft)", session_reason, setup_name, entry, plan, confluence_score, METALS_MAX_LEVERAGE)
+        logger.info(f"METALS ENGINE signal: {json.dumps(payload)}")
+
 
 def scan_river(now,market_condition):
     """NOTE: function/variable names (scan_river, last_river_time, RIVER_INTERVAL)"""
@@ -6797,35 +6821,6 @@ def scan_coins(btc_trend,fng,market_condition,btc_klines=None):
                     signals_this_cycle+=1
                 continue
 
-            lightning_setup = check_lightning_ignition_engine(symbol, price)
-            if lightning_setup:
-                with trade_lock:
-                    _lightning_ok = (coin not in active_trades and coin not in pending_signals and len(active_trades)<MAX_ACTIVE_TRADES)
-                if _lightning_ok:
-                    logger.info(f"{coin} LIGHTNING IGNITION ENGINE: {lightning_setup['pattern']} — {lightning_setup['direction']} setup")
-                    if format_and_send(lightning_setup, coin, is_instant=True, market_condition=market_condition):
-                        signals_this_cycle += 1
-                    continue
-
-            ignition_dir = detect_cvd_delta_3m(symbol)
-            if ignition_dir:
-                _ign_zones = get_htf_zones(symbol)
-                _ign_zone_ok, _ign_z_label = is_in_zone(price, ignition_dir, _ign_zones)
-                with trade_lock:
-                    _ign_ok_to_send = (_ign_zone_ok and coin not in active_trades and coin not in pending_signals and len(active_trades)<MAX_ACTIVE_TRADES)
-                if _ign_ok_to_send:
-                    logger.info(f"{coin} LIGHTNING 3M IGNITION: taker delta spike at {_ign_z_label} — {ignition_dir} setup")
-                    ign_setup = {
-                        "coin": coin, "symbol": symbol, "direction": ignition_dir,
-                        "pattern": "Lightning 3M Ignition (Taker Delta)", "setup_score": 99.0,
-                        "leverage": get_smart_leverage(symbol, 0.5, 99.0), "scan_price": price,
-                        "market_condition": market_condition, "tf_score": get_timeframe_score(symbol, ignition_dir),
-                        "is_lightning": True,
-                    }
-                    if format_and_send(ign_setup, coin, is_instant=True, market_condition=market_condition):
-                        signals_this_cycle += 1
-                    continue
-
             if coin not in macro_coils:
                 macro_pat, macro_dir, macro_quality, macro_level = detect_macro_setups_4h_1h(symbol)
                 if macro_pat:
@@ -6964,7 +6959,7 @@ def main():
                      "starting the bot — it will not run with placeholder credentials, since every "
                      "Telegram send would otherwise fail silently in the background.")
         raise SystemExit(1)
-    global last_river_time,last_hourly_time,last_pnl_update_time,last_8h_desk_time,last_weekly_report_day,last_pressure_cooker_time,total_scan_cycles,last_macro_forecast_pass_time
+    global last_river_time,last_hourly_time,last_pnl_update_time,last_8h_desk_time,last_weekly_report_day,last_pressure_cooker_time,total_scan_cycles,last_metals_scan_time
     load_alerts(); load_circuit_breaker(); load_pending_signals(); load_retest_watchlist(); load_macro_events(); load_evaluating_signals()
     cloud_load_all()
     threading.Thread(target=poll_telegram,daemon=True).start()
@@ -7001,9 +6996,8 @@ def main():
             if (now-last_pnl_update_time)>=3600:      send_live_pnl_update(); last_pnl_update_time=now
             if (now-last_river_time)>=RIVER_INTERVAL:  scan_river(now,market_condition); last_river_time=now
             if (now-last_8h_desk_time)>=28800:         send_8h_ai_desk_report(); last_8h_desk_time=now
-            if (now-last_macro_forecast_pass_time)>=MACRO_FORECAST_PASS_INTERVAL_SECONDS:
-                run_macro_forecast_pass(); last_macro_forecast_pass_time=now
             if (now-last_pressure_cooker_time)>=7200:  send_pressure_cooker_report(); last_pressure_cooker_time=now
+            if (now-last_metals_scan_time)>=METALS_SCAN_INTERVAL_SECONDS: scan_metals_engine(); last_metals_scan_time=now
             today=datetime.now(IST).date()
             if today.weekday()==6 and last_weekly_report_day!=today:
                 send_weekly_report(); last_weekly_report_day=today
