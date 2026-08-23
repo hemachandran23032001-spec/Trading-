@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 if not CHARTS_AVAILABLE:
     logger.warning("mplfinance/pandas not installed — chart images disabled, text signals unaffected. Add mplfinance,pandas,matplotlib to requirements.txt and redeploy to enable.")
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8909949122:AAEINK16qv8ALdW2G3R_2Sb93LDsJG0WC6Q")
-CHAT_ID        = os.getenv("CHAT_ID", "8005940008")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_TOKEN_HERE")
+CHAT_ID        = os.getenv("CHAT_ID", "YOUR_CHAT_ID_HERE")
 NEWS_API_KEY   = os.getenv("NEWS_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 AI_REVIEW_ENABLED = os.getenv("AI_REVIEW_ENABLED", "true").strip().lower() != "false"
@@ -147,6 +147,7 @@ ATR_TP_MULTIPLIER        = 5.0
 MIN_RR_RATIO             = 2.0
 MAX_DAILY_LOSSES         = 3
 CIRCUIT_BREAKER_MIN_LOSS = -5.0
+CIRCUIT_BREAKER_MAX_DAILY_PORT_PNL = -15.0  # real gap found and fixed this round: the count-based check above only counts trades individually worse than -5%, giving zero protection against many moderate losses accumulating into a large daily drawdown (confirmed against real data: a day with -43.86% cumulative raw PnL across 6 trades did NOT trip the breaker, since only 2 of them individually crossed -5%). This uses portfolio-weighted PnL (port_pnl, position-size-scaled), not raw leveraged PnL — the right basis for a genuine "how much real capital did today cost me" risk control, distinct from the raw-PnL basis used in trade reporting/display per explicit instruction.
 ATR_VOLATILITY_RATIO     = 3.0
 CONSEC_LOSS_SUSPEND      = 5
 MIN_SIGNALS_TO_SUSPEND   = 15
@@ -2168,8 +2169,8 @@ def detect_patterns(symbol, klines, price, btc_trend):
     if ((max(highs[-20:]) - min(lows[-20:])) / price) * 100 < 1.5: return []
     ms = detect_market_structure(klines)
     ms_bias = ms["bias"]
-    alt_bull_ok  = btc_trend == 1 or ms_bias == "bullish"
-    alt_bear_ok  = btc_trend == -1 or ms_bias == "bearish"
+    alt_bull_ok  = (btc_trend == 1 or ms_bias == "bullish") and ms_bias != "bearish"
+    alt_bear_ok  = (btc_trend == -1 or ms_bias == "bearish") and ms_bias != "bullish"
     p = []
     sup = ms["swing_low"] if ms["swing_low"] > 0 else min(lows[-30:-1])
     res = ms["swing_high"] if ms["swing_high"] > 0 else max(highs[-30:-1])
@@ -2926,7 +2927,7 @@ def get_macro_structure_sl_tp(symbol, direction, entry_price):
     return sl
 
 
-def check_active_macro_coils():
+def check_active_macro_coils(btc_trend=0, market_condition="unknown"):
     """The Heartbeat of the Pre-Breakout Engine. Runs every scan cycle to"""
     global macro_coils
     now = get_ist_datetime()
@@ -2978,6 +2979,23 @@ def check_active_macro_coils():
                     is_valid_breakout = level > live_price >= (level * 0.975)
 
                 if is_valid_breakout:
+                    # REAL MARKET-ALIGNMENT GATE (this round, confirmed missing
+                    # before this fix — Radar's entire pipeline, from coil
+                    # detection through to firing, never checked BTC trend or
+                    # overall market condition anywhere). Doesn't require full
+                    # alignment (a coin's own confirmed 4H/1H breakout is real
+                    # evidence on its own), but does block firing when BTC is
+                    # actively trending directly against this specific coil's
+                    # direction at the moment of breakout — the exact situation
+                    # that produces "market going one way, bot trading the
+                    # other" trades.
+                    if data["direction"] == "BUY" and btc_trend == -1:
+                        logger.info(f"{coin} MACRO BREAKOUT held back: BTC trending down against this BUY setup — still monitoring, not firing yet.")
+                        continue
+                    if data["direction"] == "SELL" and btc_trend == 1:
+                        logger.info(f"{coin} MACRO BREAKOUT held back: BTC trending up against this SELL setup — still monitoring, not firing yet.")
+                        continue
+
                     macro_sl = get_macro_structure_sl_tp(symbol, data["direction"], live_price)
 
                     sl_dist = abs(live_price - macro_sl)
@@ -2996,7 +3014,7 @@ def check_active_macro_coils():
                         "coin": coin, "symbol": symbol, "direction": data["direction"],
                         "pattern": f"Pre-Breakout Macro ({data['pattern']})", "setup_score": 99.0,
                         "leverage": get_smart_leverage(symbol, 1.0, 99.0), "scan_price": live_price,
-                        "market_condition": "unknown", "tf_score": get_timeframe_score(symbol, data["direction"]),
+                        "market_condition": market_condition, "tf_score": get_timeframe_score(symbol, data["direction"]),
                         "macro_sl": macro_sl,
                         "macro_tp": macro_tp,
                         "is_macro": True,
@@ -3006,7 +3024,7 @@ def check_active_macro_coils():
                         "macro_ai_reasoning": data.get("ai_reasoning", "Upstream Macro AI approved."),
                     }
                     logger.info(f"{coin} MACRO BREAKOUT TRIGGERED: {data['pattern']} {data['direction']} ({macro_grade}, {macro_pts}pts) on {live_vol_ratio:.1f}x volume — executing.")
-                    format_and_send(macro_setup, coin, is_instant=True, market_condition="unknown")
+                    format_and_send(macro_setup, coin, is_instant=True, market_condition=market_condition)
                     keys_to_delete.append(coin)
                     continue
 
@@ -3213,7 +3231,16 @@ def check_circuit_breaker():
             return True
         except Exception:
             circuit_breaker_until=None; return False
-    return daily_losses>=MAX_DAILY_LOSSES
+    if daily_losses>=MAX_DAILY_LOSSES:
+        return True
+    today_port_pnl = sum(t.get("port_pnl", t.get("pnl", 0)) for t in trade_journal if t.get("date")==str(today))
+    if today_port_pnl <= CIRCUIT_BREAKER_MAX_DAILY_PORT_PNL:
+        midnight=(datetime.now(IST)+timedelta(days=1)).replace(hour=0,minute=0,second=0,microsecond=0)
+        circuit_breaker_until=midnight.isoformat()
+        save_circuit_breaker()
+        send_telegram(f"🚨 <b>{BOT_HEADER}</b>\nCIRCUIT BREAKER ACTIVE\nCumulative portfolio loss today: {today_port_pnl:.2f}% (limit: {CIRCUIT_BREAKER_MAX_DAILY_PORT_PNL:.1f}%).\nResumes at midnight IST.")
+        return True
+    return False
 
 def increment_daily_losses(pnl):
     global daily_losses,circuit_breaker_until
@@ -6913,7 +6940,7 @@ def main():
             for coin,w,price in check_retest_triggers():
                 logger.info(f"RETEST/FAST-TRACK signal dispatched: {coin}|{w['direction']}|{w['pattern']}")
             check_evaluating_signals()
-            check_active_macro_coils()
+            check_active_macro_coils(btc_trend, market_condition)
             now=time.time()
             if (now-last_hourly_time)>=3600:          send_hourly_report();   last_hourly_time=now
             if (now-last_pnl_update_time)>=3600:      send_live_pnl_update(); last_pnl_update_time=now
